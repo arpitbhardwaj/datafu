@@ -42,12 +42,13 @@ object PathsResolver {
       "2.4.0" -> "0.10.8.1",
       "2.4.1" -> "0.10.8.1",
       "2.4.2" -> "0.10.8.1",
-      "2.4.3" -> "0.10.8.1"
+      "2.4.3" -> "0.10.8.1",
+      "2.4.4" -> "0.10.8.1"
   )
 
 	val sparkVersion = if (sparkSystemVersion == null) "2.3.0" else sparkSystemVersion
   
-  val py4jVersion = py4js.getOrElse(sparkVersion, "0.10.6") // our default
+  val py4jVersion = py4js.getOrElse(sparkVersion, "0.10.8.1") // our default
   
   val pyspark = ResourceCloning.cloneResource(new File("data/pysparks/pyspark-" + sparkVersion + ".zip").toURI().toURL(),
     "pyspark_cloned.zip").getPath
