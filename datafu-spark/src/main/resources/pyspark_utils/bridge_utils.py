@@ -17,10 +17,11 @@
 
 import os
 
-from py4j.java_gateway import JavaGateway, GatewayParameters
+from py4j.java_gateway import JavaGateway, GatewayClient, GatewayParameters
 from pyspark.conf import SparkConf
 from pyspark.context import SparkContext
 from pyspark.sql import SparkSession
+
 
 # use jvm gateway to create a java class instance by full-qualified class name
 def _getjvm_class(gateway, fullClassName):
@@ -40,11 +41,7 @@ class Context(object):
         if os.environ.get("SPARK_EXECUTOR_URI"):
             SparkContext.setSystemProperty("spark.executor.uri", os.environ["SPARK_EXECUTOR_URI"])
 
-        # gateway = JavaGateway(GatewayClient(port=int(os.environ.get("PYSPARK_GATEWAY_PORT"))), auto_convert=True)
-        gateway = JavaGateway(gateway_parameters=GatewayParameters(
-            port=int(os.environ.get("PYSPARK_GATEWAY_PORT")),
-            auth_token=os.environ.get("PYSPARK_GATEWAY_SECRET"),
-            auto_convert=True))
+        gateway = get_java_gateway()
         java_import(gateway.jvm, "org.apache.spark.SparkEnv")
         java_import(gateway.jvm, "org.apache.spark.SparkConf")
         java_import(gateway.jvm, "org.apache.spark.api.java.*")
@@ -58,14 +55,25 @@ class Context(object):
         jSparkSession = intp.pyGetSparkSession()
         jsc = intp.pyGetJSparkContext(jSparkSession)
         jconf = intp.pyGetSparkConf(jsc)
-        conf = SparkConf(_jvm = gateway.jvm, _jconf = jconf)
+        conf = SparkConf(_jvm=gateway.jvm, _jconf=jconf)
         self.sc = SparkContext(jsc=jsc, gateway=gateway, conf=conf)
 
         # Spark 2
         self.sparkSession = SparkSession(self.sc, jSparkSession)
         self.sqlContext = self.sparkSession._wrapped
 
+
 ctx = None
+
+
+def get_java_gateway():
+    if os.environ.get("PY4J_USE_AUTH") != "true":
+        return JavaGateway(GatewayClient(port=int(os.environ.get("PYSPARK_GATEWAY_PORT"))), auto_convert=True)
+    else:
+        return JavaGateway(gateway_parameters=GatewayParameters(
+            port=int(os.environ.get("PYSPARK_GATEWAY_PORT")),
+            auth_token=os.environ.get("PYSPARK_GATEWAY_SECRET"),
+            auto_convert=True))
 
 
 def get_contexts():

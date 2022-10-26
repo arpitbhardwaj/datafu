@@ -26,6 +26,7 @@ import org.apache.spark.api.python.PythonUtils
 import org.apache.spark.deploy.PythonRunner
 import org.apache.spark.util.Utils
 import py4j.GatewayServer
+import spark.utils.overwrites.SparkVersion
 
 import java.security.SecureRandom
 import scala.util.Random
@@ -60,18 +61,25 @@ case class SparkPythonRunner(pyPaths: String,
       sys.env.getOrElse("PYSPARK_DRIVER_PYTHON",
                         sys.env.getOrElse("PYSPARK_PYTHON", "python"))
 
+    val usePy4jAuth = SparkVersion.fromVersionString(SparkVersion.sparkSystemVersion).isAuthSupported
+    System.setProperty("PY4J_USE_AUTH", usePy4jAuth.toString)
+
     // Format python filename paths before adding them to the PYTHONPATH
     val formattedPyFiles = PythonRunner.formatPaths(pyPaths)
 
     // Launch a Py4J gateway server for the process to connect to; this will let it see our
     // Java system properties and such
-    //val gatewayServer = new GatewayServer(ScalaPythonBridge, 0)
     val auth_token = createSecret(256)
-    val gatewayServer = new GatewayServer.GatewayServerBuilder()
-      .entryPoint(ScalaPythonBridge)
-      .javaPort(0)
-      .authToken(auth_token)
-      .build()
+    val gatewayServer =
+      if (usePy4jAuth)
+        new GatewayServer.GatewayServerBuilder()
+          .entryPoint(ScalaPythonBridge)
+          .javaPort(0)
+          .authToken(auth_token)
+          .build()
+      else
+        new GatewayServer(ScalaPythonBridge, 0)
+
     val thread = new Thread(new Runnable() {
       override def run(): Unit = Utils.logUncaughtExceptions {
         gatewayServer.start()
@@ -106,7 +114,7 @@ case class SparkPythonRunner(pyPaths: String,
     env.put("PYTHONUNBUFFERED", "YES") // value is needed to be set to a non-empty string
     env.put("PYSPARK_GATEWAY_PORT", "" + gatewayServer.getListeningPort)
     env.put("PYSPARK_GATEWAY_SECRET", auth_token)
-    //env.put("PYSPARK_ALLOW_INSECURE_GATEWAY", "1") // needed for Spark 2.4.1 and newer, will stop working in Spark 3.x
+    if (!usePy4jAuth) env.put("PYSPARK_ALLOW_INSECURE_GATEWAY", "1") // needed for Spark 2.4.1 and newer, will stop working in Spark 3.x
     builder.redirectErrorStream(true) // Ugly but needed for stdout and stderr to synchronize
     val process = builder.start()
     val writer = new BufferedWriter(
@@ -151,7 +159,7 @@ case class SparkPythonRunner(pyPaths: String,
     output
   }
 
-  def createSecret(secretBitLength: Int): String = {
+  private def createSecret(secretBitLength: Int): String = {
     val rnd = new SecureRandom
     val secretBytes = new Array[Byte](secretBitLength / java.lang.Byte.SIZE)
     rnd.nextBytes(secretBytes)
